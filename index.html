@@ -10,6 +10,7 @@
     <script src="https://unpkg.com/react@16.3.0-alpha.1/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@16.3.0-alpha.1/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/babel-standalone@6.15.0/babel.min.js"></script>
+    <script src="https://ui.dev/goals-todos-api/index.js"></script>
 </head>
 
 <body>
@@ -29,6 +30,7 @@
         const TOGGLE_TODO = 'TOGGLE_TODO';
         const ADD_GOAL = 'ADD_GOAL';
         const REMOVE_GOAL = 'REMOVE_GOAL';
+        const RECEIVE_DATA = 'RECEIVE_DATA';
 
         // Action Creators 
 
@@ -69,6 +71,14 @@
             }
         }
 
+        function receiveDataAction(todos, goals) {
+            return {
+                type: RECEIVE_DATA,
+                todos,
+                goals
+            }
+        }
+
         function todos(state = [], action) {
 
             switch (action.type) {
@@ -80,6 +90,8 @@
                     return state.map((todo) => todo.id !== action.id ? todo : Object.assign({}, todo, {
                         complete: !todo.complete
                     }));
+                case RECEIVE_DATA:
+                    return action.todos;
                 default:
                     return state;
             }
@@ -92,12 +104,21 @@
                     return state.concat([action.goal]);
                 case REMOVE_GOAL:
                     return state.filter((goal) => goal.id !== action.id);
+                case RECEIVE_DATA:
+                    return action.goals;
                 default:
                     return state;
             }
         }
 
-
+        function loading(state = true, action) {
+            switch (action.type) {
+                case RECEIVE_DATA:
+                    return false;
+                default:
+                    return state;
+            }
+        }
 
         const checker = (store) => (next) => (action) => {
             if (
@@ -130,10 +151,9 @@
 
         const store = Redux.createStore(Redux.combineReducers({
             todos,
-            goals
+            goals,
+            loading
         }), Redux.applyMiddleware(checker, logger));
-
-
     </script>
 
     <script type="text/babel">
@@ -160,6 +180,16 @@
         class Todos extends React.Component {
             addItem = (e) => {
                 e.preventDefault();
+
+                return API.saveTodo(this.input.value)
+                       .then((todo) => {
+                        this.props.store.dispatch(addTodoAction(todo));
+                        this.input.value = '';
+                        })
+                        .catch(() => {
+                            alert('There was an error. Try again!!');
+                        });
+
                 const name = this.input.value;
                 this.input.value = '';
 
@@ -171,11 +201,21 @@
             }
 
             removeItem = (todo) => {
-                this.props.store.dispatch(removeTodoAction(todo.id))
+                this.props.store.dispatch(removeTodoAction(todo.id));
+                return API.deleteTodo(todo.id)
+                        .catch(() => {
+                            this.props.store.dispatch(addTodoAction(todo));
+                            alert('An error occured');
+                        });
             }
             
             toggleItem = (id) => {
-                this.props.store.dispatch(toggleTodoAction(id))
+                this.props.store.dispatch(toggleTodoAction(id));
+                return API.saveTodoToggle(id)
+                       .catch(() => {
+                           this.props.store.dispatch(toggleTodoAction(id));
+                           alert('An error occured');
+                       });
             }
 
 
@@ -198,6 +238,16 @@
 
             addItem = (e) => {
                 e.preventDefault();
+
+                return API.saveGoal (this.input.value)
+                       .then((goal) => {
+                        this.props.store.dispatch(addGoalAction(goal));
+                        this.input.value = '';
+                        })
+                        .catch(() => {
+                            alert('There was an error. Try again!!');
+                        });
+
                 const name = this.input.value;
                 this.input.value = '';
 
@@ -208,7 +258,12 @@
             }
 
             removeItem = (goal) => {
-                this.props.store.dispatch(removeGoalAction(goal.id))
+                this.props.store.dispatch(removeGoalAction(goal.id));
+                return API.deleteGoal (goal.id)
+                        .catch(() => {
+                            this.props.store.dispatch(addGoalAction(goal))
+                            alert('An error occured');
+                        });
             }
             
          
@@ -231,11 +286,21 @@
             componentDidMount() {
                 const { store } = this.props;
 
+                Promise
+                .all([API.fetchTodos(), API.fetchGoals()])
+                .then(([todos, goals]) => {
+                    store.dispatch(receiveDataAction(todos, goals));
+                })
                 store.subscribe(() => this.forceUpdate())
             }
             render() {
                 const { store } = this.props;
-                const { todos, goals } = store.getState();
+                const { todos, goals, loading } = store.getState();
+
+                if (loading === true) {
+                    return <h3>Loading</h3>
+                }
+
                 return (
                     <div>
                         <Todos todos={todos} store={this.props.store}/>
